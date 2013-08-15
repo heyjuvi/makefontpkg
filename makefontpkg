@@ -1,0 +1,135 @@
+#!/usr/bin/env python2
+# -*- encoding: utf-8 -*-
+
+import os
+import sys
+import hashlib
+
+from subprocess import call
+from optparse import OptionParser
+
+def main():
+	parser = OptionParser()
+	
+	parser.add_option("-s", "--source",
+	                  action="store_true", dest="source", default=False,
+	                  help="make a source package for the AUR")
+	
+	(options, args) = parser.parse_args()
+	
+	if len(args) == 1:
+		fontpath = args[0]
+		
+		fontfile = os.path.basename(fontpath)
+		fontname, fontextension = os.path.splitext(fontfile)
+		
+		if os.path.exists(fontpath) and fontextension.lower() == ".ttf":
+			call(["cp", fontpath, "./"])
+			
+			generatepkgbuild(fontpath)
+			generatedotinstall(fontpath)
+			
+			if options.source:
+				makepkgsource()
+			else:
+				makepkg()
+			
+			clean(fontpath)
+		else:
+			print "Are you really sure this file is a true type font and exists?"
+	else:
+		print "Please pass exactly one argument!"
+
+def generatepkgbuild(fontpath):
+	pkgbuild = ("pkgname=$$FONTNAME$$\n" + \
+	            "pkgver=1.0\n" + \
+	            "pkgrel=1\n" + \
+	            "depends=('fontconfig' 'xorg-font-utils')\n" + \
+	            "pkgdesc=\"$$FONTNAME$$ custom font\"\n" + \
+	            "arch=('any')\n" + \
+	            "\n" + \
+	            "source=($$FONTFILE$$)\n" + \
+	            "md5sums=(\"$$MD5SUM$$\")\n" + \
+	            "\n" + \
+	            "install=$pkgname.install\n" + \
+	            "\n" + \
+	            "package() {\n" + \
+	            "  install -d \"$pkgdir/usr/share/fonts/TTF\"\n" + \
+	            "  cp -dpr --no-preserve=ownership \"$srcdir/$$FONTFILE$$\" \"$pkgdir/usr/share/fonts/TTF/\"\n") + \
+	            "}\n"
+	
+	fontfile = os.path.basename(fontpath)
+	fontname, _ = os.path.splitext(fontfile)
+	md5sum = hashfile(fontpath, hashlib.md5())
+	
+	pkgbuild = pkgbuild.replace("$$FONTFILE$$", fontfile)
+	pkgbuild = pkgbuild.replace("$$FONTNAME$$", fontname)
+	pkgbuild = pkgbuild.replace("$$MD5SUM$$", md5sum)
+	
+	openedpkgbuild = open("PKGBUILD", "w+")
+	openedpkgbuild.write(pkgbuild)
+	openedpkgbuild.close()
+
+def hashfile(fontpath, hasher, blocksize=65536):
+	openedfont = open(fontpath, "rb")
+	filebuffer= openedfont.read(blocksize)
+	
+	while len(filebuffer) > 0:
+		hasher.update(filebuffer)
+		filebuffer = openedfont.read(blocksize)
+	
+	openedfont.close()
+	
+	return hasher.hexdigest()
+
+def generatedotinstall(fontpath):
+	dotinstall = ("post_install() {\n" + \
+	              "  echo -n \"Updating font cache... \"\n" + \
+	              "  fc-cache -fs > /dev/null\n" + \
+	              "  mkfontscale /usr/share/fonts/TTF /usr/share/fonts/Type1\n" + \
+	              "  mkfontdir /usr/share/fonts/TTF /usr/share/fonts/Type1\n" + \
+	              "  echo \"Done. \"\n" + \
+	              "}\n" + \
+	              "\n" + \
+	              "post_upgrade() {\n" + \
+	              "  post_install\n" + \
+	              "}\n" + \
+	              "\n" + \
+	              "post_remove() {\n" + \
+	              "  post_install\n" + \
+	              "}\n")
+	
+	fontfile = os.path.basename(fontpath)
+	fontname, _ = os.path.splitext(fontfile)
+	
+	openeddotinstall = open(fontname + ".install", "w+")
+	openeddotinstall.write(dotinstall)
+	openeddotinstall.close()
+
+def makepkg():
+	call(["makepkg", "-f"])
+
+def makepkgsource():
+	call(["makepkg", "-f", "--source"])
+
+def clean(fontpath):
+	fontfile = os.path.basename(fontpath)
+	fontname, _ = os.path.splitext(fontfile)
+	
+	if os.path.exists("src"):
+		call(["rm", "-r", "src"])
+	
+	if os.path.exists("pkg"):
+		call(["rm", "-r", "pkg"])
+	
+	if os.path.exists("PKGBUILD"):
+		call(["rm", "PKGBUILD"])
+	
+	if os.path.exists(fontname + ".install"):
+		call(["rm", fontname + ".install"])
+
+if __name__=='__main__':
+   try:
+      main()
+   except KeyboardInterrupt:
+      print "Interrupted... "
