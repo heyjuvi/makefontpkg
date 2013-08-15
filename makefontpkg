@@ -129,7 +129,7 @@ def clean(fontpath):
 		call(["rm", fontname + ".install"])
 
 if __name__=='__main__':
-   try:
-      main()
-   except KeyboardInterrupt:
-      print "Interrupted... "
+	try:
+		main()
+	except KeyboardInterrupt:
+		print "Interrupted... "
