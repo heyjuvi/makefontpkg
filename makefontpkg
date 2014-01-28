@@ -14,6 +14,10 @@ def main():
 	parser.add_option("-s", "--source",
 	                  action="store_true", dest="source", default=False,
 	                  help="make a source package for the AUR")
+
+        parser.add_option("-i", "--install",
+                          action="store_true", dest="install", default=False,
+                          help="directly install the package with pacman")
 	
 	(options, args) = parser.parse_args()
 	
@@ -29,7 +33,11 @@ def main():
 			generatepkgbuild(fontpath)
 			generatedotinstall(fontpath)
 			
-			if options.source:
+                        if options.install:
+                            makepkg()
+
+                            call(["sudo", "pacman", "-U", fontname + "-1.0-1-any.pkg.tar.xz"])
+			elif options.source:
 				makepkgsource()
 			else:
 				makepkg()
