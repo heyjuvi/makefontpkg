@@ -3,11 +3,11 @@
 pkgname=makefontpkg
 pkgver=20130816
 pkgrel=1
-pkgdesc="Tool to create packages from TrueType-Fonts"
+pkgdesc="Tool to create packages from TrueType-Fonts & OpenType-Fonts"
 arch=('x86_64' 'i686')
 url="http://github.com/misterdanb/makefontpkg"
 license=('Beerware')
-depends=('python2')
+depends=('python')
 makedepends=('git')
 options=('!strip' '!emptydirs')
 source=('makefontpkg::git://github.com/misterdanb/makefontpkg.git')
