@@ -63,7 +63,7 @@ def main():
                         action="store_true", dest="install", default=False,
                         help="directly install the package")
 
-    action.add_argument("-s", "--source",
+    action.add_argument("-S", "--source", "-s",
                         action="store_true", dest="source", default=False,
                         help="make a source-only tarball")
 

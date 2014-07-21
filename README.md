@@ -9,7 +9,7 @@ Name
 Synopsis
 --------
 
-<pre><code>makefontpkg [-h] [-i | -s] <var>FILE</var></code></pre>
+<pre><code>makefontpkg [-h] [-i | -S] <var>FILE</var></code></pre>
 
 Description
 -----------
@@ -27,7 +27,7 @@ Options
 
     directly install the package instead of building the package
 
-  - `-s`, `--source`
+  - `-S`, `--source`, `-s`
 
     make a source-only tarball instead of building the package
 
