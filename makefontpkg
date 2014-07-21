@@ -67,6 +67,18 @@ def main():
                         action="store_true", dest="source", default=False,
                         help="make a source-only tarball")
 
+    parser.add_argument("-n", "--name",
+                        help="package name " +
+                             "(default: name of first file)")
+
+    parser.add_argument("--ver", default="1.0-1", metavar="VER[-REL]",
+                        help="package version and release number " +
+                             "(default: 1.0-1)")
+
+    parser.add_argument("--desc", default="Custom font",
+                        help="description of the package " +
+                             '(default: "Custom font")')
+
     parser.add_argument("FILE", nargs=1, action="store",
                         help="TTF or OTF file")
 
@@ -82,8 +94,26 @@ def main():
         msg = "Doesn't appear to be a TrueType or OpenType font: "
         raise UserError(msg + fontpath)
 
-    # generate and sanitize the package name
-    pkgname = scrubpkgname(fontname)
+    # parse and sanitize the package name
+    pkgname = args.name
+    if pkgname is None:
+        pkgname = fontname
+    pkgname = scrubpkgname(pkgname)
+
+    # parse and validate the package version and release number
+    pkgvers = args.ver.split("-")
+    lenpkgvers = len(pkgvers)
+    pkgver = pkgvers[0].lower()
+    if lenpkgvers == 1:
+        pkgrel = "1"
+    elif lenpkgvers == 2:
+        pkgrel = pkgvers[1]
+    else:
+        raise UserError("Too many hyphens: " + args.ver)
+    if not re.match("^[a-z0-9._]+$", pkgver):
+        raise UserError("Invalid version: " + pkgver)
+    if not re.match("^[0-9]+$", pkgrel) or pkgrel == "0":
+        raise UserError("Invalid release number: " + pkgrel)
 
     with TempDir() as tempdir, WorkDir(tempdir) as prevdir:
         copyfile(fontabspath, ".")
@@ -93,9 +123,9 @@ def main():
             "fontfile":  shellescape(fontfile),
             "fontname":  shellescape(fontname),
             "pkgname":   pkgname,
-            "pkgver":    "1.0.0",
-            "pkgrel":    "1",
-            "pkgdesc":   "Custom font",
+            "pkgver":    pkgver,
+            "pkgrel":    pkgrel,
+            "pkgdesc":   shellescape(args.desc),
             "arch":      "any",
         }
         generatepkgbuild(pkg)
