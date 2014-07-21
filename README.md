@@ -9,7 +9,7 @@ Name
 Synopsis
 --------
 
-<pre><code>makefontpkg [-h] [-i] [-s] <var>FILE</var></code></pre>
+<pre><code>makefontpkg [-h] [-i | -s] <var>FILE</var></code></pre>
 
 Description
 -----------
@@ -25,7 +25,7 @@ Options
 
   - `-i`, `--install`
 
-    directly install the package
+    directly install the package instead of building the package
 
   - `-s`, `--source`
 
