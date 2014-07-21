@@ -93,9 +93,9 @@ def main():
             "fontfile":  shellescape(fontfile),
             "fontname":  shellescape(fontname),
             "pkgname":   pkgname,
-            "pkgver":    "1.0",
+            "pkgver":    "1.0.0",
             "pkgrel":    "1",
-            "pkgdesc":   shellescape(fontname) + " custom font",
+            "pkgdesc":   "Custom font",
             "arch":      "any",
         }
         generatepkgbuild(pkg)
