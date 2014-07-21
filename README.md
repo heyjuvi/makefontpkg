@@ -4,17 +4,18 @@ makefontpkg
 Name
 ----
 
-**makefontpkg** - builds a Pacman package from a font file
+**makefontpkg** - builds a Pacman package from a set of font files
 
 Synopsis
 --------
 
-<pre><code>makefontpkg [-h] [-i | -S] [-n <var>NAME</var>] [--ver <var>VER</var>[-<var>REL</var>]] [--desc <var>DESC</var>] <var>FILE</var></code></pre>
+<pre><code>makefontpkg [-h] [-i | -S] [-n <var>NAME</var>] [--ver <var>VER</var>[-<var>REL</var>]] [--desc <var>DESC</var>]
+            <var>FILE</var> [<var>FILE</var> ...]</code></pre>
 
 Description
 -----------
 
-Builds a Pacman package from a TrueType or OpenType font file.
+Builds a Pacman package from a set of TrueType and/or OpenType font files.
 
 Options
 -------
@@ -45,4 +46,4 @@ Options
 
   - <code><var>FILE</var></code>
 
-    a font file with extension `.ttf` or `.otf`
+    font files with extensions `.ttf` or `.otf`
