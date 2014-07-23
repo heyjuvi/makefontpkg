@@ -1,155 +1,273 @@
-#!/usr/bin/env python
-# -*- encoding: utf-8 -*-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
+from __future__ import print_function
 import os
-import hashlib
-
-from subprocess import call
+import re
+import shutil
+import sys
+import tempfile
+from subprocess import CalledProcessError, check_call
 from argparse import ArgumentParser
 
 
+class TempDir(object):
+    """A context representing a temporary directory, which is deleted upon
+    exiting the context."""
+
+    def __init__(self, *args, **kwargs):
+        """Make a temporary directory.  The parameters of this function is
+        identical to that of `tempfile.mkdtemp`."""
+        self.dirname = tempfile.mkdtemp(*args, **kwargs)
+
+    def __enter__(self):
+        """Return the path to the temporary directory."""
+        return self.dirname
+
+    def __exit__(self, type, value, traceback):
+        """Remove the temporary directory."""
+        shutil.rmtree(self.dirname, ignore_errors=True)
+
+
+class WorkDir(object):
+    """A context for changing to a different working directory.  The original
+    working directory is restored upon exiting the context."""
+
+    def __init__(self, path):
+        """Change to a different working directory."""
+        self.prevdir = os.getcwd()
+        os.chdir(path)
+
+    def __enter__(self):
+        """Return the path to the previous working directory."""
+        return self.prevdir
+
+    def __exit__(self, type, value, traceback):
+        """Restore the the temporary directory."""
+        os.chdir(self.prevdir)
+
+
+class UserError(Exception):
+    pass
+
+
 def main():
-    parser = ArgumentParser(description="Create font package from TTF or OTF file", prog="makefontpkg")
+    parser = ArgumentParser(
+        description="Create font package from TTF or OTF file.",
+        prog="makefontpkg",
+    )
 
-    parser.add_argument("-s", "--source",
-                        action="store_true", dest="source", default=False,
-                        help="make a source package for the AUR")
+    action = parser.add_mutually_exclusive_group()
 
-    parser.add_argument("-i", "--install",
+    action.add_argument("-i", "--install",
                         action="store_true", dest="install", default=False,
-                        help="directly install the package with pacman")
+                        help="directly install the package")
 
-    parser.add_argument("font_file_path", nargs=1, action="store",
-                        help="path/to/.ttf/or/.otf/file")
+    action.add_argument("-S", "--source", "-s",
+                        action="store_true", dest="source", default=False,
+                        help="make a source-only tarball")
+
+    parser.add_argument("-n", "--name",
+                        help="package name " +
+                             "(default: name of first file)")
+
+    parser.add_argument("--ver", default="1.0-1", metavar="VER[-REL]",
+                        help="package version and release number " +
+                             "(default: 1.0-1)")
+
+    parser.add_argument("--desc", default="Custom font",
+                        help="description of the package " +
+                             '(default: "Custom font")')
+
+    parser.add_argument("FILE", nargs="+", action="store",
+                        help="TTF or OTF file(s)")
 
     args = parser.parse_args()
 
-    fontpath = args.font_file_path[0]
-    fontfile = os.path.basename(fontpath)
-    fontname, fontextension = os.path.splitext(fontfile)
-    fonttype = fontextension[1:].upper()
+    fontabspaths = []
+    fontfiles = []
+    fontnames = []
+    fonttypes = []
+    uniquefontfiles = set()
 
-    if os.path.exists(fontpath) and (fonttype == "TTF" or fonttype == "OTF"):
-        call(["cp", fontpath, "./"])
+    # parse and validate the font
+    for fontpath in args.FILE:
+        fontabspath = os.path.abspath(fontpath)
+        fontfile = os.path.basename(fontpath)
+        fontname, fontextension = os.path.splitext(fontfile)
+        fonttype = fontextension[1:].upper()
 
-        generatepkgbuild(fontpath)
-        generatedotinstall(fontpath)
+        if fontfile in uniquefontfiles:
+            msg = "Cannot have two or more fonts with the same name: "
+            raise UserError(msg + fontfile)
+
+        if fonttype not in ("TTF", "OTF"):
+            msg = "Doesn't appear to be a TrueType or OpenType font: "
+            raise UserError(msg + fontpath)
+
+        fontabspaths.append(fontabspath)
+        fontfiles.append(fontfile)
+        fontnames.append(fontname)
+        fonttypes.append(fonttype)
+        uniquefontfiles.add(fontfile)
+
+    # parse and sanitize the package name
+    pkgname = args.name
+    if pkgname is None:
+        pkgname = fontname
+    pkgname = scrubpkgname(pkgname)
+
+    # parse and validate the package version and release number
+    pkgvers = args.ver.split("-")
+    lenpkgvers = len(pkgvers)
+    pkgver = pkgvers[0].lower()
+    if lenpkgvers == 1:
+        pkgrel = "1"
+    elif lenpkgvers == 2:
+        pkgrel = pkgvers[1]
+    else:
+        raise UserError("Too many hyphens: " + args.ver)
+    if not re.match("^[a-z0-9._]+$", pkgver):
+        raise UserError("Invalid version: " + pkgver)
+    if not re.match("^[0-9]+$", pkgrel) or pkgrel == "0":
+        raise UserError("Invalid release number: " + pkgrel)
+
+    with TempDir() as tempdir, WorkDir(tempdir) as prevdir:
+        for fontabspath in fontabspaths:
+            copyfile(fontabspath, ".")
+
+        pkg = {
+            "fonttypes": fonttypes,
+            "fontfiles": fontfiles,
+            "fontnames": fontnames,
+            "pkgname":   pkgname,
+            "pkgver":    pkgver,
+            "pkgrel":    pkgrel,
+            "pkgdesc":   shellescape(args.desc),
+            "arch":      "any",
+        }
+        generatepkgbuild(pkg)
+        generatedotinstall(pkg)
 
         if args.install:
-            makepkg()
+            check_call(("makepkg", "-i"))
 
-            call(["sudo", "pacman", "-U", fontname + "-1.0-1-any.pkg.tar.xz"])
         elif args.source:
-            makepkgsource()
+            check_call(("makepkg", "-S"))
+            outname = "{pkgname}-{pkgver}-{pkgrel}.src.tar.gz"
+            copyfile(outname.format(**pkg), prevdir)
+
         else:
-            makepkg()
+            check_call(("makepkg",))
+            outname = "{pkgname}-{pkgver}-{pkgrel}-{arch}.pkg.tar.xz"
+            copyfile(outname.format(**pkg), prevdir)
 
-        clean(fontpath)
+
+def generatepkgbuild(pkg):
+    """Generate the `PKGBUILD`."""
+    pkgbuild = """
+pkgname={pkgname}
+pkgver={pkgver}
+pkgrel={pkgrel}
+depends=(fontconfig xorg-font-utils)
+pkgdesc="{pkgdesc}"
+arch=({arch})
+
+source=({sources})
+md5sums=()
+
+install=$pkgname.install
+
+package() {{
+{installs}}}
+"""[1:]
+    install = """
+  install -Dm644 "$srcdir/{0}" "$pkgdir/usr/share/fonts/{1}/{0}"
+"""[1:]
+    fontfiles = tuple(map(shellescape, pkg["fontfiles"]))
+    fonttypes = tuple(map(shellescape, pkg["fonttypes"]))
+    installs = "".join(
+        install.format(fontfile, fonttype)
+        for fontfile, fonttype in zip(fontfiles, fonttypes)
+    )
+    sources = " ".join('"{0}"'.format(fontfile) for fontfile in fontfiles)
+    pkgbuild = pkgbuild.format(sources=sources, installs=installs, **pkg)
+    writefile("PKGBUILD", pkgbuild)
+    check_call(("updpkgsums"))
+
+
+def generatedotinstall(pkg):
+    """Generate the `$pkgname.install`."""
+    dotinstall = """
+post_install() {{
+  echo Updating font cache...
+  fc-cache >/dev/null -f
+{updates}}}
+
+post_upgrade() {{
+  post_install
+}}
+
+post_remove() {{
+  post_install
+}}
+"""[1:]
+    update = """
+  mkfontscale /usr/share/fonts/{0}
+  mkfontdir   /usr/share/fonts/{0}
+"""[1:]
+    uniquefonttypes = sorted(set(pkg["fonttypes"]))
+    updates = "".join(update.format(fonttype) for fonttype in uniquefonttypes)
+    dotinstall = dotinstall.format(updates=updates, **pkg)
+    writefile(pkg["pkgname"] + ".install", dotinstall)
+
+
+def shellescape(string, quote_type='"'):
+    """Escapes the string using shell script syntax."""
+    if quote_type == '"':
+        return (string.replace("\\", r"\\")
+                      .replace('"',  r'\"')
+                      .replace("$",  r"\$")
+                      .replace("`",  r"\`")
+                      .replace("!", '"\'!\'"'))
+    elif quote_type == "'":
+        return string.replace("'", "'\"'\"'")
     else:
-        print("Are you really sure this file is a TrueType or OpenType font and exists?")
+        raise ValueError("bad quote_type: {0}".format(repr(quote_type)))
 
 
-def generatepkgbuild(fontpath):
-    pkgbuild = ("pkgname=$$FONTNAME$$\n" +
-                "pkgver=1.0\n" +
-                "pkgrel=1\n" +
-                "depends=('fontconfig' 'xorg-font-utils')\n" +
-                "pkgdesc=\"$$FONTNAME$$ custom font\"\n" +
-                "arch=('any')\n" +
-                "\n" +
-                "source=($$FONTFILE$$)\n" +
-                "md5sums=(\"$$MD5SUM$$\")\n" +
-                "\n" +
-                "install=$pkgname.install\n" +
-                "\n" +
-                "package() {\n" +
-                "  install -d \"$pkgdir/usr/share/fonts/$$FONTTYPE$$\"\n" +
-                "  cp -dpr --no-preserve=ownership \"$srcdir/$$FONTFILE$$\" \"$pkgdir/usr/share/fonts/$$FONTTYPE$$/\"\n" +
-                "}\n")
-
-    fontfile = os.path.basename(fontpath)
-    fontname, fontextension = os.path.splitext(fontfile)
-    fonttype = fontextension[1:].upper()
-    md5sum = hashfile(fontpath, hashlib.md5())
-
-    pkgbuild = pkgbuild.replace("$$FONTFILE$$", fontfile)
-    pkgbuild = pkgbuild.replace("$$FONTNAME$$", fontname)
-    pkgbuild = pkgbuild.replace("$$MD5SUM$$", md5sum)
-    pkgbuild = pkgbuild.replace("$$FONTTYPE$$", fonttype)
-
-    openedpkgbuild = open("PKGBUILD", "w+")
-    openedpkgbuild.write(pkgbuild)
-    openedpkgbuild.close()
+def scrubpkgname(name):
+    """Remove all forbidden characters from the package name.  If there are no
+    characters remaining, it is replaced with "@".  If the name is different
+    from the original, a warning is printed."""
+    newname = "-".join(re.findall("[a-z0-9@._+]+", name.lower())) or "_"
+    if name != newname:
+        msg = ("WARNING: package name is not valid: {0}\n" +
+               "         using this instead: {1}")
+        print(msg.format(name, newname), file=sys.stderr)
+    return newname
 
 
-def hashfile(fontpath, hasher, blocksize=65536):
-    openedfont = open(fontpath, "rb")
-    filebuffer = openedfont.read(blocksize)
-
-    while len(filebuffer) > 0:
-        hasher.update(filebuffer)
-        filebuffer = openedfont.read(blocksize)
-
-    openedfont.close()
-
-    return hasher.hexdigest()
+def copyfile(name, destdir):
+    """Copy a file to another directory, raising `UserError` if it fails."""
+    try:
+        shutil.copy(name, destdir if destdir.endswith("/") else destdir + "/")
+    except OSError as e:
+        raise UserError(str(e))
 
 
-def generatedotinstall(fontpath):
-    dotinstall = ("post_install() {\n" +
-                  "  echo -n \"Updating font cache... \"\n" +
-                  "  fc-cache -fs > /dev/null\n" +
-                  "  mkfontscale /usr/share/fonts/$$FONTTYPE$$ /usr/share/fonts/Type1\n" +
-                  "  mkfontdir /usr/share/fonts/$$FONTTYPE$$ /usr/share/fonts/Type1\n" +
-                  "  echo \"Done. \"\n" +
-                  "}\n" +
-                  "\n" +
-                  "post_upgrade() {\n" +
-                  "  post_install\n" +
-                  "}\n" +
-                  "\n" +
-                  "post_remove() {\n" +
-                  "  post_install\n" +
-                  "}\n")
-
-    fontfile = os.path.basename(fontpath)
-    fontname, fontextension = os.path.splitext(fontfile)
-    fonttype = fontextension[1:].upper()
-
-    dotinstall = dotinstall.replace("$$FONTTYPE$$", fonttype)
-
-    openeddotinstall = open(fontname + ".install", "w+")
-    openeddotinstall.write(dotinstall)
-    openeddotinstall.close()
+def writefile(filename, contents):
+    """Write a string to a file."""
+    with open(filename, "w") as f:
+        f.write(contents)
 
 
-def makepkg():
-    call(["makepkg", "-f"])
-
-
-def makepkgsource():
-    call(["makepkg", "-f", "--source"])
-
-
-def clean(fontpath):
-    fontfile = os.path.basename(fontpath)
-    fontname, _ = os.path.splitext(fontfile)
-
-    if os.path.exists("src"):
-        call(["rm", "-r", "src"])
-
-    if os.path.exists("pkg"):
-        call(["rm", "-r", "pkg"])
-
-    if os.path.exists("PKGBUILD"):
-        call(["rm", "PKGBUILD"])
-
-    if os.path.exists(fontname + ".install"):
-        call(["rm", fontname + ".install"])
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("Interrupted... ")
+        print("Interrupted... ", file=sys.stderr)
+        sys.exit(130)
+    except (CalledProcessError, UserError) as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(2)
