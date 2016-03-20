@@ -148,6 +148,7 @@ def main():
         }
         generatepkgbuild(pkg)
         generatedotinstall(pkg)
+        check_call(("updpkgsums"))
 
         if args.install:
             check_call(("makepkg", "-i"))
@@ -193,8 +194,6 @@ package() {{
     sources = " ".join('"{0}"'.format(fontfile) for fontfile in fontfiles)
     pkgbuild = pkgbuild.format(sources=sources, installs=installs, **pkg)
     writefile("PKGBUILD", pkgbuild)
-    check_call(("updpkgsums"))
-
 
 def generatedotinstall(pkg):
     """Generate the `$pkgname.install`."""
