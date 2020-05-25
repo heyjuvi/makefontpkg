@@ -160,7 +160,7 @@ def main():
 
         else:
             check_call(("makepkg",))
-            outname = "{pkgname}-{pkgver}-{pkgrel}-{arch}.pkg.tar.xz"
+            outname = "{pkgname}-{pkgver}-{pkgrel}-{arch}.pkg.tar.zst"
             copyfile(outname.format(**pkg), prevdir)
 
 
@@ -173,7 +173,7 @@ pkgrel={pkgrel}
 pkgdesc="{pkgdesc}"
 arch=({arch})
 
-PKGEXT='.pkg.tar.xz'
+PKGEXT='.pkg.tar.zst'
 
 source=({sources})
 md5sums=()
