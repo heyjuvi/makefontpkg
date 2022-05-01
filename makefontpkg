@@ -114,7 +114,7 @@ def main():
     # parse and sanitize the package name
     pkgname = args.name
     if pkgname is None:
-        pkgname = fontname
+        pkgname = fonttype.lower() + '-' + fontname
     pkgname = scrubpkgname(pkgname)
 
     # parse and validate the package version and release number
